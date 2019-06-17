@@ -215,7 +215,7 @@ public class ExporterR {
 	 * @param startTime              Start time for the export, provided as a String with format "HH:mm:ss"
 	 * @param stopTime               Stop time for the export, provided as a String with format "HH:mm:ss"
 	 * @param timewindow             A string indicating the time window setting. Valid options are 'no', 'events', 'seconds', 'minutes', 'hours', 'days', 'weeks', 'months', and 'years'.
-	 * @param windowsize             An int indicating the duration of the time window in the units specified in the timeWindow argument.
+	 * @param windowsize             An integer value indicating the duration of the time window in the units specified in the timeWindow argument.
 	 * @param excludeVariables       A String array with n elements, indicating the variable of the n'th value
 	 * @param excludeValues          A String array with n elements, indicating the value pertaining to the n'th variable String
 	 * @param excludeAuthors         A String array of values to exclude in the 'author' variable at the document level
@@ -233,12 +233,17 @@ public class ExporterR {
 	 * @return                       A Matrix object containing the resulting one-mode or two-mode network
 	 * @throws Exception 
 	 */
+	 // @param exponentialDecay       Exponential decay or linear decay from the mid-point of the time window?
+	 // @param exponentialParameter   Lambda parameter for exponential decay or slope for linear decay in the time window. Can be 0 to switch off decay.
 	public void rNetwork(String networkType, String statementType, String variable1, boolean variable1Document, String variable2, 
 			boolean variable2Document, String qualifier, String qualifierAggregation, String normalization, boolean includeIsolates, 
 			String duplicates, String startDate, String stopDate, String startTime, String stopTime, String timewindow, int windowsize, 
-			String[] excludeVariables, String[] excludeValues, String[] excludeAuthors, String[] excludeSources, String[] excludeSections, 
-			String[] excludeTypes, boolean invertValues, boolean invertAuthors, boolean invertSources, boolean invertSections, 
-			boolean invertTypes, String outfile, String fileFormat, boolean verbose) throws Exception {
+			boolean decayExponential, double decayParameter, String[] excludeVariables, String[] excludeValues, String[] excludeAuthors, 
+			String[] excludeSources, String[] excludeSections, String[] excludeTypes, boolean invertValues, boolean invertAuthors, 
+			boolean invertSources, boolean invertSections, boolean invertTypes, boolean verbose) throws Exception {
+		
+		String outfile = null;
+		String fileFormat = "graphml";
 		
 		// step 1: preprocess arguments
 		int max = 5;
@@ -308,8 +313,8 @@ public class ExporterR {
 		}
 		
 		if (!qualifierAggregation.equals("ignore") && !qualifierAggregation.equals("subtract") && !qualifierAggregation.equals("combine")
-				&& !qualifierAggregation.equals("congruence") && !qualifierAggregation.equals("conflict")) {
-			throw new Exception("'qualifierAggregation' must be 'ignore', 'combine', 'subtract', 'congruence', or 'conflict'.");
+				&& !qualifierAggregation.equals("congruence") && !qualifierAggregation.equals("conflict") && !qualifierAggregation.equals("collate")) {
+			throw new Exception("'qualifierAggregation' must be 'ignore', 'combine', 'collate', 'subtract', 'congruence', or 'conflict'.");
 		}
 		if (qualifierAggregation.equals("combine") && !networkType.equals("Two-mode network")) {
 			throw new Exception("qualifierAggregation = 'combine' is only possible with two-mode networks.");
@@ -579,9 +584,12 @@ public class ExporterR {
 				m = exportHelper.computeTwoModeMatrix(filteredStatements, data.getDocuments(), st, variable1, variable2, variable1Document, 
 						variable2Document, names1, names2, qualifier, qualifierAggregation, normalization, start, stop, verbose);
 			} else {
+				//this.timeWindowMatrices = exportHelper.computeTimeWindowMatrices(filteredStatements, data.getDocuments(), st, variable1, variable2, 
+				//		variable1Document, variable2Document, names1, names2, qualifier, qualifierAggregation, normalization, true, start, stop, 
+				//		timewindow, windowsize, includeIsolates);
 				this.timeWindowMatrices = exportHelper.computeTimeWindowMatrices(filteredStatements, data.getDocuments(), st, variable1, variable2, 
 						variable1Document, variable2Document, names1, names2, qualifier, qualifierAggregation, normalization, true, start, stop, 
-						timewindow, windowsize, includeIsolates);
+						timewindow, windowsize, includeIsolates, decayExponential, decayParameter);
 			}
 			this.matrix = m;
 		} else if (networkType.equals("One-mode network")) {
@@ -589,9 +597,12 @@ public class ExporterR {
 				m = exportHelper.computeOneModeMatrix(filteredStatements, data.getDocuments(), st, variable1, variable2, variable1Document, 
 						variable2Document, names1, names2, qualifier, qualifierAggregation, normalization, start, stop);
 			} else {
+				//this.timeWindowMatrices = exportHelper.computeTimeWindowMatrices(filteredStatements, data.getDocuments(), st, variable1, variable2, 
+				//		variable1Document, variable2Document, names1, names2, qualifier, qualifierAggregation, normalization, false, start, stop, 
+				//		timewindow, windowsize, includeIsolates);
 				this.timeWindowMatrices = exportHelper.computeTimeWindowMatrices(filteredStatements, data.getDocuments(), st, variable1, variable2, 
 						variable1Document, variable2Document, names1, names2, qualifier, qualifierAggregation, normalization, false, start, stop, 
-						timewindow, windowsize, includeIsolates);
+						timewindow, windowsize, includeIsolates, decayExponential, decayParameter);
 			}
 			this.matrix = m;
 		} else if (networkType.equals("Event list")) {

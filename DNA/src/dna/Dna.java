@@ -20,7 +20,7 @@ public class Dna {
 	PrintStream console;
 	
 	public Dna() {
-		date = "2019-04-30";
+		date = "2019-06-17";
 		version = "2.0 beta 25";
 	}
 	

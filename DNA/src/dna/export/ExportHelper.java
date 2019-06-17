@@ -381,7 +381,7 @@ public class ExportHelper {
 		}
 		return frequencies;
 	}
-
+		
 	/**
 	 * Create a series of one-mode or two-mode networks using a moving time window.
 	 * 
@@ -403,12 +403,15 @@ public class ExportHelper {
 	 * @param unitType              {@link String} indicating the kind of temporal unit used for the moving window. Valid values are "using seconds", "using minutes", "using hours", "using days", "using weeks", "using months", "using years", and "using events".
 	 * @param timeUnits             How large is the time window? E.g., 100 days, where "days" are defined in the unit type argument.
 	 * @param includeIsolates       Boolean indicating whether all nodes should be present at all times
+	 * @param decayExponential      Exponential or linear decay?
+	 * @param decayParameter        Lambda for the exponential decay function or slope for linear decay function.
 	 * @return                      {@link Matrix} object containing a one-mode network matrix.
+	 * @throws Exception 
 	 */
 	ArrayList<Matrix> computeTimeWindowMatrices(ArrayList<Statement> statements, ArrayList<Document> documents, StatementType statementType, 
 			String var1, String var2, boolean var1Document, boolean var2Document, String[] names1, String[] names2, String qualifier, 
 			String qualifierAggregation, String normalization, boolean twoMode, Date start, Date stop, String unitType, int timeUnits, 
-			boolean includeIsolates) {
+			boolean includeIsolates, boolean decayExponential, double decayParameter) throws Exception {
 		
 		ArrayList<Matrix> timeWindowMatrices = new ArrayList<Matrix>();
 		Collections.sort(statements);
@@ -445,13 +448,20 @@ public class ExportHelper {
 								break;
 							}
 						}
+						Date current = statements.get(t).getDate();
 						if (twoMode == true) {
-							boolean verbose = false;
-							m = computeTwoModeMatrix(currentWindowStatements, documents, statementType, var1, var2, var1Document, 
-									var2Document, names1, names2, qualifier, qualifierAggregation, normalization, first, last, verbose);
+							//boolean verbose = false;
+							//m = computeTwoModeMatrix(currentWindowStatements, documents, statementType, var1, var2, var1Document, 
+							//		var2Document, names1, names2, qualifier, qualifierAggregation, normalization, first, last, verbose);
+							m = computeTwoModeMatrixDecay(currentWindowStatements, statementType, var1, var2, var1Document, 
+									var2Document, names1, names2, qualifier, qualifierAggregation, normalization, first, last, current,
+									decayExponential, decayParameter);
 						} else {
-							m = computeOneModeMatrix(currentWindowStatements, documents, statementType, var1, var2, var1Document, 
-									var2Document, names1, names2, qualifier, qualifierAggregation, normalization, first, last);
+							//m = computeOneModeMatrix(currentWindowStatements, documents, statementType, var1, var2, var1Document, 
+							//		var2Document, names1, names2, qualifier, qualifierAggregation, normalization, first, last);
+							m = computeOneModeMatrixDecay(currentWindowStatements, documents, statementType, var1, var2, var1Document, 
+									var2Document, names1, names2, qualifier, qualifierAggregation, normalization, first, last, current,
+									decayExponential, decayParameter);
 						}
 						m.setDate(statements.get(t).getDate());
 						m.setNumStatements(currentWindowStatements.size());
@@ -520,14 +530,20 @@ public class ExportHelper {
 							names2 = extractLabels(currentWindowStatements, statements, documents, var2, var2Document, statementType.getId(), includeIsolates);
 						}
 						if (twoMode == true) {
-							boolean verbose = false;
-							m = computeTwoModeMatrix(currentWindowStatements, documents, statementType, var1, var2, var1Document, 
+							//boolean verbose = false;
+							//m = computeTwoModeMatrix(currentWindowStatements, documents, statementType, var1, var2, var1Document, 
+							//		var2Document, names1, names2, qualifier, qualifierAggregation, normalization, 
+							//		windowStart.getTime(), windowStop.getTime(), verbose);
+							m = computeTwoModeMatrixDecay(currentWindowStatements, statementType, var1, var2, var1Document, 
 									var2Document, names1, names2, qualifier, qualifierAggregation, normalization, 
-									windowStart.getTime(), windowStop.getTime(), verbose);
+									windowStart.getTime(), windowStop.getTime(), matrixTime, decayExponential, decayParameter);
 						} else {
-							m = computeOneModeMatrix(currentWindowStatements, documents, statementType, var1, var2, var1Document, 
+							//m = computeOneModeMatrix(currentWindowStatements, documents, statementType, var1, var2, var1Document, 
+							//		var2Document, names1, names2, qualifier, qualifierAggregation, normalization, 
+							//		windowStart.getTime(), windowStop.getTime());
+							m = computeOneModeMatrixDecay(currentWindowStatements, documents, statementType, var1, var2, var1Document, 
 									var2Document, names1, names2, qualifier, qualifierAggregation, normalization, 
-									windowStart.getTime(), windowStop.getTime());
+									windowStart.getTime(), windowStop.getTime(), matrixTime, decayExponential, decayParameter);
 						}
 						m.setDate(matrixTime);
 						m.setNumStatements(currentWindowStatements.size());
@@ -538,8 +554,7 @@ public class ExportHelper {
 		}
 		return timeWindowMatrices;
 	}
-	
-	
+
 	/**
 	 * Create a one-mode network {@link Matrix}.
 	 * 
@@ -683,6 +698,183 @@ public class ExportHelper {
 			}
 		}
 		
+		
+		boolean integerBoolean;
+		if (normalization.equals("no") && booleanQualifier == true) {
+			integerBoolean = true;
+		} else {
+			integerBoolean = false;
+		}
+		
+		Matrix matrix = new Matrix(m, names1, names1, integerBoolean, start, stop);
+		return matrix;
+	}
+
+	/**
+	 * Create a one-mode network {@link Matrix} with exponential or linear decay from the mid point.
+	 * 
+	 * @param statements            A (potentially filtered) {@link ArrayList} of {@link Statement}s.
+	 * @param documents             An {@link ArrayList} of {@link Document}s which contain the statements.
+	 * @param statementType         The {@link StatementType} corresponding to the statements.
+	 * @param var1                  {@link String} denoting the first variable (containing the row values).
+	 * @param var2                  {@link String} denoting the second variable (containing the columns values).
+	 * @param var1Document          {@link boolean} indicating whether the first variable is a document-level variable.
+	 * @param var2Document          {@link boolean} indicating whether the second variable is a document-level variable.
+	 * @param names1                {@link String} array containing the row labels.
+	 * @param names2                {@link String} array containing the column labels.
+	 * @param qualifier             {@link String} denoting the name of the qualifier variable.
+	 * @param qualifierAggregation  {@link String} indicating how different levels of the qualifier variable are aggregated. Valid values are "ignore", "subtract", and "combine".
+	 * @param normalization         {@link String} indicating what type of normalization will be used. Valid values are "no", "average activity", "Jaccard", and "cosine".
+	 * @param start                 Start date.
+	 * @param stop                  End date.
+	 * @param current               Mid-point of the date range.
+	 * @param decayExponential      boolean indicating whether exponential decay or linear decay should be used for the edge weights from the mid-point.
+	 * @param decayParameter        Decay parameter. In the case of the exponential function, this is the lambda parameter in exp(-lambda * time). In the case of linear decay, this is the slope in 1 - (slope * time). 
+	 * @return                      {@link Matrix} object containing a one-mode network matrix.
+	 */
+	Matrix computeOneModeMatrixDecay(ArrayList<Statement> statements, ArrayList<Document> documents, StatementType statementType, 
+			String var1, String var2, boolean var1Document, boolean var2Document, String[] names1, String[] names2, String qualifier, 
+			String qualifierAggregation, String normalization, Date start, Date stop, Date current, boolean decayExponential, 
+			double decayParameter) {
+		
+		if (statements.size() == 0) {
+			double[][] m = new double[names1.length][names1.length];
+			Matrix mt = new Matrix(m, names1, names1, true, start, stop);
+			return mt;
+		}
+		
+		boolean booleanQualifier = true;  // is the qualifier boolean, rather than integer or null?
+		if (qualifier == null || statementType.getVariables().get(qualifier).equals("integer")) {
+			booleanQualifier = false;
+		}
+		int[] qualifierValues;  // unique qualifier values (i.e., all of them found at least once in the dataset)
+		if (qualifier == null) {
+			qualifierValues = new int[] { 0 };
+		} else if (statementType.getVariables().get(qualifier).equals("integer")) {
+			qualifierValues = getIntValues(statements, qualifier);
+		} else {
+			qualifierValues = new int[] {0, 1};
+		}
+		
+		Collections.sort(statements);
+		
+		double[][] mat1 = new double[names1.length][names1.length];  // square matrix for "congruence" (or "ignore") results
+		double[][] mat2 = new double[names1.length][names1.length];  // square matrix for "conflict" results
+		double[][] m = new double[names1.length][names1.length];  // square matrix for final results
+		double range = Math.abs(qualifierValues[qualifierValues.length - 1] - qualifierValues[0]);
+		double w = 1.0; // partial edge weight
+		double timediff = 0.0; // time difference standardized by window size (min = 0; max = 1);
+
+		// compute decayed one-mode network matrix
+		for (int i = 0; i < statements.size(); i++) {
+			for (int j = 0; j < statements.size(); j++) {
+				//if (i != j && ((!statements.get(i).getDate().after(current) && !statements.get(j).getDate().before(current)) ||
+				//		(!statements.get(i).getDate().before(current) && !statements.get(j).getDate().after(current))) &&
+				//		statements.get(i).getValues().get(var2).equals(statements.get(j).getValues().get(var2))) {
+				if (i < j && statements.get(i).getValues().get(var2).equals(statements.get(j).getValues().get(var2))) {
+					int row = -1;
+					int col = -1;
+					for (int n = 0; n < names1.length; n++) {
+						if (names1[n].equals((String) statements.get(i).getValues().get(var1))) {
+							row = n;
+						}
+						if (names1[n].equals((String) statements.get(j).getValues().get(var1))) {
+							col = n;
+						}
+						if (row != -1 && col != -1) {
+							break;
+						}
+					}
+					if (qualifierAggregation.equals("congruence") || qualifierAggregation.equals("subtract")) {
+						w = 1.0 - ((Math.abs((int) statements.get(i).getValues().get(qualifier) - (int) statements.get(j).getValues().get(qualifier)) / range));
+					}
+					if (qualifierAggregation.equals("conflict") || qualifierAggregation.equals("subtract")) {
+						w = (Math.abs((int) statements.get(i).getValues().get(qualifier) - (int) statements.get(j).getValues().get(qualifier)) / range);
+					}
+					if (qualifierAggregation.equals("ignore")) {
+						w = 1.0;
+					}
+					timediff = (statements.get(i).getDate().getTime() - statements.get(j).getDate().getTime()) / (statements.get(statements.size() - 1).getDate().getTime() - statements.get(0).getDate().getTime());
+					if (decayExponential == true) { // exponential decay with weight multiplicator exp(-lambda * time); 0 = no decay, 1 = end points still count 40%, 5 approximates zero at the end points
+						w = w * Math.exp(-decayParameter * timediff);
+					} else { // linear decay with weight multiplicator 1 - (slope * time); 0 = no decay, 1 = triangle function, [0; 1] = includes the extreme points more than 0;  > 1 cuts off end points
+						w = w * (1 - (decayParameter * timediff));
+					}
+					if (qualifierAggregation.equals("congruence") || qualifierAggregation.equals("subtract") || qualifierAggregation.equals("ignore")) {
+						mat1[row][col] = mat1[row][col] + w;
+					} else if (qualifierAggregation.equals("conflict") || qualifierAggregation.equals("subtract")) {
+						mat2[row][col] = mat2[row][col] + w;
+					}
+				}
+			}
+		}
+		
+		// normalization
+		double[][][] array = createArray(statements, documents, statementType, var1, var2, var1Document, var2Document, 
+				names1, names2, qualifier, qualifierAggregation);
+		double i1count = 0.0;
+		double i2count = 0.0;
+		for (int i1 = 0; i1 < names1.length; i1++) {
+			for (int i2 = 0; i2 < names1.length; i2++) {
+				if (i1 != i2) {
+					double norm = 1.0;
+					if (normalization.equals("no")) {
+						norm = 1.0;
+					} else if (normalization.equals("average activity")) {
+						i1count = 0.0;
+						i2count = 0.0;
+						for (int j = 0; j < names2.length; j++) {
+							for (int k = 0; k < qualifierValues.length; k++) {
+								i1count = i1count + array[i1][j][k];
+								i2count = i2count + array[i2][j][k];
+							}
+						}
+						norm = (i1count + i2count) / 2;
+					} else if (normalization.equals("Jaccard")) {
+						double m10 = 0.0;
+						double m01 = 0.0;
+						double m11 = 0.0;
+						for (int j = 0; j < names2.length; j++) {
+							for (int k = 0; k < qualifierValues.length; k++) {
+								if (array[i2][j][k] == 0) {
+									m10 = m10 + array[i1][j][k];
+								}
+								if (array[i1][j][k] == 0) {
+									m01 = m01 + array[i2][j][k];
+								}
+								if (array[i1][j][k] > 0 && array[i2][j][k] > 0) {
+									m11 = m11 + (array[i1][j][k] * array[i2][j][k]);
+								}
+							}
+						}
+						norm = m01 + m10 + m11;
+					} else if (normalization.equals("cosine")) {
+						i1count = 0.0;
+						i2count = 0.0;
+						for (int j = 0; j < names2.length; j++) {
+							for (int k = 0; k < qualifierValues.length; k++) {
+								i1count = i1count + array[i1][j][k];
+								i2count = i2count + array[i2][j][k];
+							}
+						}
+						norm = Math.sqrt(i1count * i1count) * Math.sqrt(i2count * i2count);
+					}
+					mat1[i1][i2] = mat1[i1][i2] / norm;
+					mat2[i1][i2] = mat2[i1][i2] / norm;
+					
+					// "subtract": congruence minus conflict; use the appropriate matrix or matrices
+					if (qualifierAggregation.equals("ignore")) {
+						m[i1][i2] = mat1[i1][i2];
+					} else if (qualifierAggregation.equals("congruence")) {
+						m[i1][i2] = mat1[i1][i2];
+					} else if (qualifierAggregation.equals("conflict")) {
+						m[i1][i2] = mat2[i1][i2];
+					} else if (qualifierAggregation.equals("subtract")) {
+						m[i1][i2] = mat1[i1][i2] - mat2[i1][i2];
+					}
+				}
+			}
+		}
 		
 		boolean integerBoolean;
 		if (normalization.equals("no") && booleanQualifier == true) {
@@ -856,6 +1048,162 @@ public class ExportHelper {
 		
 		// create Matrix object and return
 		Matrix matrix = new Matrix(mat, names1, names2, integerBoolean, start, stop); // assemble the Matrix object with labels
+		return matrix;
+	}
+
+	/**
+	 * Create a two-mode network {@link Matrix} with exponential or linear decay from the mid point.
+	 * 
+	 * @param statements            A (potentially filtered) {@link ArrayList} of {@link Statement}s.
+	 * @param statementType         The {@link StatementType} corresponding to the statements.
+	 * @param var1                  {@link String} denoting the first variable (containing the row values).
+	 * @param var2                  {@link String} denoting the second variable (containing the columns values).
+	 * @param var1Document          {@link boolean} indicating whether the first variable is a document-level variable.
+	 * @param var2Document          {@link boolean} indicating whether the second variable is a document-level variable.
+	 * @param names1                {@link String} array containing the row labels.
+	 * @param names2                {@link String} array containing the column labels.
+	 * @param qualifier             {@link String} denoting the name of the qualifier variable.
+	 * @param qualifierAggregation  {@link String} indicating how different levels of the qualifier variable are aggregated. Valid values are "ignore", "subtract", "combine", and "collate".
+	 * @param normalization         {@link String} indicating what type of normalization will be used. Valid values are "no", "activity", and "prominence".
+	 * @param start                 Start date.
+	 * @param stop                  End date.
+	 * @param current               Mid-point of the date range.
+	 * @param decayExponential      boolean indicating whether exponential decay or linear decay should be used for the edge weights from the mid-point.
+	 * @param decayParameter        Decay parameter. In the case of the exponential function, this is the lambda parameter in exp(-lambda * time). In the case of linear decay, this is the slope in 1 - (slope * time).
+	 * @return                      {@link Matrix} object containing a two-mode network matrix.
+	 */
+	Matrix computeTwoModeMatrixDecay(ArrayList<Statement> statements, StatementType statementType, 
+			String var1, String var2, boolean var1Document, boolean var2Document, String[] names1, String[] names2, String qualifier, 
+			String qualifierAggregation, String normalization, Date start, Date stop, Date current, boolean decayExponential, 
+			double decayParameter) throws Exception {
+		
+		String[] names2Collated = new String[names2.length * 2];
+		for (int i = 0; i < names2.length; i++) {
+			names2Collated[i] = names2[i] + " - 1";
+			names2Collated[i + names2.length] = names2[i] + " - 0";
+		}
+		
+		if (statements.size() == 0) {
+			double[][] m;
+			Matrix mt;
+			if (qualifierAggregation.equals("collate")) {
+				m = new double[names1.length][names2Collated.length];
+				mt = new Matrix(m, names1, names2Collated, true, start, stop);
+			} else {
+				m = new double[names1.length][names2.length];
+				mt = new Matrix(m, names1, names2, true, start, stop);
+			}
+			return mt;
+		}
+		
+		boolean booleanQualifier = true;  // is the qualifier boolean, rather than integer or null?
+		if (qualifier == null) {
+			booleanQualifier = false;
+		} else if (statementType.getVariables().get(qualifier).equals("integer")) {
+			booleanQualifier = false;
+		}
+		
+		double[][] mat;
+		if (qualifierAggregation.equals("collate")) {
+			mat = new double[names1.length][names2Collated.length];  // initialized with zeros
+		} else {
+			mat = new double[names1.length][names2.length];  // initialized with zeros
+		}
+		int q = 0;
+		double numerator = 0.0;
+		double denominator = 0.0;
+		double w = 0.0;
+		for (int i = 0; i < statements.size(); i++) {
+			q = (int) statements.get(i).getValues().get(qualifier);
+			int row = -1;
+			for (int j = 0; j < names1.length; j++) {
+				if (names1[j].equals((String) statements.get(i).getValues().get(var1))) {
+					row = j;
+				}
+			}
+			int col = -1;
+			for (int j = 0; j < names2.length; j++) {
+				if (qualifierAggregation.equals("collate") && names2[j].equals((String) statements.get(i).getValues().get(var2)) &&	q == 1) {
+					col = j;
+				} else if (qualifierAggregation.equals("collate") && names2[j].equals((String) statements.get(i).getValues().get(var2)) && q == 0) {
+					col = j + names2.length;
+				} else if (names2[j].equals((String) statements.get(i).getValues().get(var2))) {
+					col = j;
+				}
+			}
+			numerator = Math.abs(current.getTime() - statements.get(i).getDate().getTime());
+			denominator = Math.max(Math.abs(current.getTime() - start.getTime()), Math.abs(current.getTime() - stop.getTime()));
+			if (numerator == 0.0 || denominator == 0.0) {
+				w = 0.0; // time difference is zero if it is identical to the mid-value or if all events are on the same day
+			} else {
+				w = numerator / denominator;
+			}
+			if (decayExponential == true) { // exponential decay with weight multiplicator exp(-lambda * time); 0 = no decay, 1 = end points still count 40%, 5 approximates zero at the end points
+				w = Math.exp(-decayParameter * w);
+			} else { // linear decay with weight multiplicator 1 - (slope * time); 0 = no decay, 1 = triangle function, [0; 1] = includes the extreme points more than 0;  > 1 cuts off end points
+				w = 1 - (decayParameter * w);
+			}
+			if (qualifierAggregation.equals("combine")) {
+				throw new Exception("Two-mode networks with decay cannot use 'combine' qualifier aggregation.");
+			} else if (qualifierAggregation.equals("subtract")) {
+				if (booleanQualifier == false) {  // add or subtract weighted absolute value, depending on qualifier value
+					mat[row][col] = mat[row][col] + (q * w);
+				} else if (booleanQualifier == true && q == 0) {  // subtract weight
+					mat[row][col] = mat[row][col] - w;
+				} else if (booleanQualifier == true && q > 0) {  // add weight
+					mat[row][col] = mat[row][col] + w;
+				}
+			} else if (qualifierAggregation.equals("ignore") || qualifierAggregation.equals("collate")) {
+				mat[row][col] = mat[row][col] + w;
+			}
+		}
+		
+		// normalization
+		boolean integerBoolean = false;
+		if (normalization.equals("no")) {
+			integerBoolean = false; // set true if no decay...
+		} else if (normalization.equals("activity")) {
+			integerBoolean = false;
+			double[] activity = new double[names1.length];
+			for (int i = 0; i < names1.length; i++) {
+				for (int j = 0; j < statements.size(); j++) {
+					if (names1[i].equals((String) statements.get(j).getValues().get(var1))) {
+						activity[i]++;
+					}
+				}
+			}
+			for (int i = 0; i < names1.length; i++) {
+				for (int j = 0; j < mat[0].length; j++) {
+					mat[i][j] = mat[i][j] / activity[i];
+				}
+			}
+		} else if (normalization.equals("prominence")) {
+			integerBoolean = false;
+			double[] prominence = new double[names2.length];
+			for (int i = 0; i < names2.length; i++) {
+				for (int j = 0; j < statements.size(); j++) {
+					if (names2[i].equals((String) statements.get(j).getValues().get(var2))) {
+						prominence[i]++;
+					}
+				}
+			}
+			for (int i = 0; i < names1.length; i++) {
+				for (int j = 0; j < names2.length; j++) {
+					mat[i][j] = mat[i][j] / prominence[j];
+					if (qualifierAggregation.equals("collate")) {
+						mat[i][j + names2.length] = mat[i][j + names2.length] / prominence[j];
+					}
+				}
+			}
+		}
+		
+		// create Matrix object and return
+		Matrix matrix;
+		if (qualifierAggregation.equals("collate")) {
+			matrix = new Matrix(mat, names1, names2Collated, integerBoolean, start, stop); // assemble the Matrix object with labels
+		} else {
+			matrix = new Matrix(mat, names1, names2, integerBoolean, start, stop); // assemble the Matrix object with labels
+		}
 		return matrix;
 	}
 	

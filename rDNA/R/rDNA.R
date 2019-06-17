@@ -3381,6 +3381,8 @@ dna_multiclust <- function(connection,
                            stop.time = "23:59:59",
                            timewindow = "no",
                            windowsize = 100,
+                           decayExponential = TRUE,
+                           decayParameter = 0.0,
                            excludeValues = list(),
                            excludeAuthors = character(),
                            excludeSources = character(),
@@ -3412,26 +3414,26 @@ dna_multiclust <- function(connection,
                            label_prop = TRUE,
                            spinglass = FALSE,
                            verbose = TRUE) {
-  
+
   if (is.null(k) || is.na(k) || !is.numeric(k) || length(k) > 1 || is.infinite(k) || k < 0) {
     stop("'k' must be a non-negative integer number. Can be 0 for flexible numbers of clusters.")
   }
   if (is.null(k.max) || is.na(k.max) || !is.numeric(k.max) || length(k.max) > 1 || is.infinite(k.max) || k.max < 1) {
     stop("'k.max' must be a positive integer number.")
   }
-  
+
   # determine what kind of two-mode network to create
   if (is.null(qualifier) || is.na(qualifier) || !is.character(qualifier)) {
     qualifierAggregation <- "ignore"
   } else {
     v <- dna_getVariables(connection = connection, statementType = statementType)
     if (v$type[v$label == qualifier] == "boolean") {
-      qualifierAggregation <- "combine"
+      qualifierAggregation <- "collate"
     } else {
       qualifierAggregation <- "subtract"
     }
   }
-  
+
   if (isTRUE(verbose)) {
     message("(1/3) Computing networks... ", appendLF = FALSE)
   }
@@ -3452,6 +3454,8 @@ dna_multiclust <- function(connection,
                         stop.time = stop.time,
                         timewindow = timewindow,
                         windowsize = windowsize,
+                        decayExponential = decayExponential,
+                        decayParameter = decayParameter,
                         excludeValues = excludeValues,
                         excludeAuthors = excludeAuthors,
                         excludeSources = excludeSources,
@@ -3480,6 +3484,8 @@ dna_multiclust <- function(connection,
                         stop.time = stop.time,
                         timewindow = timewindow,
                         windowsize = windowsize,
+                        decayExponential = decayExponential,
+                        decayParameter = decayParameter,
                         excludeValues = excludeValues,
                         excludeAuthors = excludeAuthors,
                         excludeSources = excludeSources,
@@ -3491,7 +3497,7 @@ dna_multiclust <- function(connection,
                         invertSections = invertSections,
                         invertTypes = invertTypes,
                         verbose = FALSE)
-  
+
   if (timewindow == "no") {
     dta <- list()
     dta$networks <- list(nw_sub)
@@ -3508,9 +3514,9 @@ dna_multiclust <- function(connection,
       message("(2/3) Computing cluster solutions... ", appendLF = TRUE)
     }
   }
-  
+
   p <- dplyr::progress_estimated(length(nw_sub$networks))
-  
+
   obj <- list()
   if (isTRUE(saveObjects)) {
     obj$cl <- list()
@@ -3521,7 +3527,7 @@ dna_multiclust <- function(connection,
   counter <- 1
   for (i in 1:length(nw_sub$networks)) {
     p$tick()$print()
-    
+
     # prepare dates
     if (timewindow == "no") {
       dta_dat[[i]] <- data.frame(i = i,
@@ -3533,29 +3539,24 @@ dna_multiclust <- function(connection,
                                  middle.date = nw_sub$time[i],
                                  stop.date = nw_sub$stop[i])
     }
-    
+
     # prepare two-mode network
     x <- nw_aff$networks[[i]]
-    if (qualifierAggregation == "combine") {
-      combined <- cbind(apply(x, 1:2, function(x) ifelse(x %in% c(1, 3), 1, 0)),
-                        apply(x, 1:2, function(x) ifelse(x %in% c(2, 3), 1, 0)))
-    } else {
-      combined <- x
-    }
+    combined <- x
     combined <- combined[rowSums(combined) > 0, , drop = FALSE]
     jac <- vegan::vegdist(combined, method = "jaccard")
-    
+
     # prepare one-mode network
     y <- nw_sub$networks[[i]]
     y[y < 0] <- 0
     class(y) <- "matrix"
     g <- igraph::graph.adjacency(y, mode = "undirected", weighted = TRUE)
-    
+
     if (nrow(combined) > 1) {
       counter_current <- 1
       current_cl <- list()
       current_mod <- numeric()
-      
+
       # Hierarchical clustering with single linkage
       if (isTRUE(single) && k > 1) {
         try({
@@ -3579,7 +3580,7 @@ dna_multiclust <- function(connection,
           counter <- counter + 1
         }, silent = TRUE)
       }
-      
+
       # Hierarchical clustering with single linkage with optimal k
       if (isTRUE(single) && k < 2) {
         try({
@@ -3611,7 +3612,7 @@ dna_multiclust <- function(connection,
           counter <- counter + 1
         }, silent = TRUE)
       }
-      
+
       # Hierarchical clustering with average linkage
       if (isTRUE(average) && k > 1) {
         try({
@@ -3635,7 +3636,7 @@ dna_multiclust <- function(connection,
           counter <- counter + 1
         }, silent = TRUE)
       }
-      
+
       # Hierarchical clustering with average linkage with optimal k
       if (isTRUE(average) && k < 2) {
         try({
@@ -3667,7 +3668,7 @@ dna_multiclust <- function(connection,
           counter <- counter + 1
         }, silent = TRUE)
       }
-      
+
       # Hierarchical clustering with complete linkage
       if (isTRUE(complete) && k > 1) {
         try({
@@ -3691,7 +3692,7 @@ dna_multiclust <- function(connection,
           counter <- counter + 1
         }, silent = TRUE)
       }
-      
+
       # Hierarchical clustering with complete linkage with optimal k
       if (isTRUE(complete) && k < 2) {
         try({
@@ -3723,7 +3724,7 @@ dna_multiclust <- function(connection,
           counter <- counter + 1
         }, silent = TRUE)
       }
-      
+
       # Hierarchical clustering with the Ward algorithm
       if (isTRUE(ward) && k > 1) {
         try({
@@ -3747,7 +3748,7 @@ dna_multiclust <- function(connection,
           counter <- counter + 1
         }, silent = TRUE)
       }
-      
+
       # Hierarchical clustering with the Ward algorithm with optimal k
       if (isTRUE(ward) && k < 2) {
         try({
@@ -3779,7 +3780,7 @@ dna_multiclust <- function(connection,
           counter <- counter + 1
         }, silent = TRUE)
       }
-      
+
       # k-means
       if (isTRUE(kmeans) && k > 1) {
         try({
@@ -3803,7 +3804,7 @@ dna_multiclust <- function(connection,
           counter <- counter + 1
         }, silent = TRUE)
       }
-      
+
       # k-means with optimal k
       if (isTRUE(kmeans) && k < 2) {
         try({
@@ -3836,7 +3837,7 @@ dna_multiclust <- function(connection,
           counter <- counter + 1
         }, silent = TRUE)
       }
-      
+
       # pam
       if (isTRUE(pam) && k > 1) {
         try({
@@ -3860,7 +3861,7 @@ dna_multiclust <- function(connection,
           counter <- counter + 1
         }, silent = TRUE)
       }
-      
+
       # pam with optimal k
       if (isTRUE(pam) && k < 2) {
         try({
@@ -3893,7 +3894,7 @@ dna_multiclust <- function(connection,
           counter <- counter + 1
         }, silent = TRUE)
       }
-      
+
       # Equivalence clustering
       if (isTRUE(equivalence) && k > 1) {
         try({
@@ -3917,7 +3918,7 @@ dna_multiclust <- function(connection,
           counter <- counter + 1
         }, silent = TRUE)
       }
-      
+
       # Equivalence clustering with optimal k
       if (isTRUE(equivalence) && k < 2) {
         try({
@@ -3949,7 +3950,7 @@ dna_multiclust <- function(connection,
           counter <- counter + 1
         }, silent = TRUE)
       }
-      
+
       # CONCOR based on the positive subtract network
       if (isTRUE(concor_one) && k %in% c(0, 2)) {
         try({
@@ -3979,7 +3980,7 @@ dna_multiclust <- function(connection,
           counter <- counter + 1
         }, silent = TRUE)
       }
-      
+
       # CONCOR based on the combined affiliation network
       if (isTRUE(concor_two) && k %in% c(0, 2)) {
         try({
@@ -4009,7 +4010,7 @@ dna_multiclust <- function(connection,
           counter <- counter + 1
         }, silent = TRUE)
       }
-      
+
       # Louvain clustering
       if (isTRUE(louvain) && k < 2) {
         try({
@@ -4033,7 +4034,7 @@ dna_multiclust <- function(connection,
           counter <- counter + 1
         }, silent = TRUE)
       }
-      
+
       # Fast & Greedy community detection (with or without cut)
       if (isTRUE(fastgreedy)) {
         try({
@@ -4064,7 +4065,7 @@ dna_multiclust <- function(connection,
           counter <- counter + 1
         }, silent = TRUE)
       }
-      
+
       # Walktrap community detection (with or without cut)
       if (isTRUE(walktrap)) {
         try({
@@ -4095,7 +4096,7 @@ dna_multiclust <- function(connection,
           counter <- counter + 1
         }, silent = TRUE)
       }
-      
+
       # Leading Eigenvector community detection (only without cut)
       if (isTRUE(leading_eigen) && k < 2) { # it *should* work with cut_at because is.hierarchical(cl) returns TRUE, but it never works...
         try({
@@ -4119,7 +4120,7 @@ dna_multiclust <- function(connection,
           counter <- counter + 1
         }, silent = TRUE)
       }
-      
+
       # Edge Betweenness community detection (with or without cut)
       if (isTRUE(edge_betweenness)) {
         try({
@@ -4150,7 +4151,7 @@ dna_multiclust <- function(connection,
           counter <- counter + 1
         }, silent = TRUE)
       }
-      
+
       # Infomap community detection
       if (isTRUE(infomap) && k < 2) {
         try({
@@ -4174,7 +4175,7 @@ dna_multiclust <- function(connection,
           counter <- counter + 1
         }, silent = TRUE)
       }
-      
+
       # Label Propagation community detection
       if (isTRUE(label_prop) && k < 2) {
         try({
@@ -4198,7 +4199,7 @@ dna_multiclust <- function(connection,
           counter <- counter + 1
         }, silent = TRUE)
       }
-      
+
       # Spinglass community detection
       if (isTRUE(spinglass) && k < 2) {
         try({
@@ -4222,7 +4223,7 @@ dna_multiclust <- function(connection,
           counter <- counter + 1
         }, silent = TRUE)
       }
-      
+
       # retain cluster object where modularity was maximal
       if (isTRUE(saveObjects) && length(current_cl) > 0) {
         obj$cl[[i]] <- current_cl[[which.max(current_mod)]]
@@ -4252,7 +4253,7 @@ dna_multiclust <- function(connection,
                                    function(x) obj$modularity$method[obj$modularity$i == x & obj$modularity$modularity == max(obj$modularity$modularity[obj$modularity$i == x], na.rm = TRUE)][1])
   # attach k to max_mod
   obj$max_mod$k <- sapply(obj$max_mod$i, function(x) max(obj$modularity$k[obj$modularity$i == x], na.rm = TRUE))
-  
+
   # diagnostics
   if (isTRUE(single) && !"Hierarchical (Single)" %in% obj$modularity$method && k > 1) {
     warning("'single' omitted due to an unknown problem.")
@@ -4305,7 +4306,7 @@ dna_multiclust <- function(connection,
   if (isTRUE(spinglass) && !"Spinglass" %in% obj$modularity$method && k < 2) {
     warning("'spinglass' omitted due to an unknown problem.")
   }
-  
+
   class(obj) <- "dna_multiclust"
   if (isTRUE(verbose)) {
     message("done.")
@@ -5916,6 +5917,8 @@ dna_network <- function(connection,
                         stop.time = "23:59:59",
                         timewindow = "no",
                         windowsize = 100,
+                        decayExponential = TRUE,
+                        decayParameter = 0,
                         excludeValues = list(),
                         excludeAuthors = character(),
                         excludeSources = character(),
@@ -5926,8 +5929,8 @@ dna_network <- function(connection,
                         invertSources = FALSE,
                         invertSections = FALSE,
                         invertTypes = FALSE,
-                        fileFormat = NULL,
-                        outfile = NULL,
+                        #fileFormat = NULL,
+                        #outfile = NULL,
                         verbose = TRUE) {
 
   # check time window arguments
@@ -5948,7 +5951,7 @@ dna_network <- function(connection,
     windowsize <- 100
     warning("'windowsize' argument not recognized. Using 'windowsize = 100'.")
   }
-  
+
   # check and convert exclude arguments
   if (!is.character(excludeAuthors)) {
     stop("'excludeAuthors' must be a character object.")
@@ -6020,26 +6023,27 @@ dna_network <- function(connection,
     stop("'normalization' must be 'no', 'activity', or 'prominence' when networkType = 'twomode'.")
   }
 
-  if (!is.null(fileFormat) && !fileFormat %in% c("csv", "dl", "graphml")) {
-    stop("'fileFormat' must be 'csv', 'dl', or 'graphml'.")
-  }
-  if (!is.null(fileFormat) && timewindow != "no" && fileFormat %in% c("csv", "dl")) {
-    stop("Only .graphml files are currently compatible with time windows.")
-  }
-  if (!is.null(fileFormat) && networkType == "eventlist" && fileFormat %in% c("dl", "graphml")) {
-    stop("Only .csv files are currently compatible with event lists.")
-  }
-  if (is.null(outfile) || is.null(fileFormat)) {
-    fileExport <- TRUE
-  } else {
-    fileExport <- FALSE
-  }
-  if (is.null(fileFormat)) {
-    fileFormat <- .jnull(class = "java/lang/String")
-  }
-  if (is.null(outfile)) {
-    outfile <- .jnull(class = "java/lang/String")
-  }
+  # if (!is.null(fileFormat) && !fileFormat %in% c("csv", "dl", "graphml")) {
+  #   stop("'fileFormat' must be 'csv', 'dl', or 'graphml'.")
+  # }
+  # if (!is.null(fileFormat) && timewindow != "no" && fileFormat %in% c("csv", "dl")) {
+  #   stop("Only .graphml files are currently compatible with time windows.")
+  # }
+  # if (!is.null(fileFormat) && networkType == "eventlist" && fileFormat %in% c("dl", "graphml")) {
+  #   stop("Only .csv files are currently compatible with event lists.")
+  # }
+  # if (is.null(outfile) || is.null(fileFormat)) {
+  #   fileExport <- TRUE
+  # } else {
+  #   fileExport <- FALSE
+  # }
+  # if (is.null(fileFormat)) {
+  #   fileFormat <- .jnull(class = "java/lang/String")
+  # }
+  # if (is.null(outfile)) {
+  #   outfile <- .jnull(class = "java/lang/String")
+  # }
+  fileExport <- TRUE
 
   # call Java function to create network
   .jcall(connection$dna_connection,
@@ -6062,6 +6066,8 @@ dna_network <- function(connection,
          stop.time,
          timewindow,
          as.integer(windowsize),
+         decayExponential,
+         as.double(decayParameter),
          var,
          val,
          excludeAuthors,
@@ -6073,8 +6079,8 @@ dna_network <- function(connection,
          invertSources,
          invertSections,
          invertTypes,
-         outfile,
-         fileFormat,
+         #outfile,
+         #fileFormat,
          verbose
   )
 
@@ -6931,9 +6937,9 @@ dna_plotDendro <- function(clust,
 }
 
 #' Create a cluster dendrogram for a DNA database
-#' 
+#'
 #' Create a cluster dendrogram based on a DNA database.
-#' 
+#'
 #' This function serves to conduct a cluster analysis of a DNA dataset and
 #' visualize the results as a dendrogram. The user can either select a specific
 #' clustering method or let the \code{\link{dna_multiclust}} function determine
@@ -6953,7 +6959,7 @@ dna_plotDendro <- function(clust,
 #' properties as well as rectangles for the clusters and other customization
 #' options. It is possible to return the underlying \code{\link{dna_multiclust}}
 #' object instead of the plot by using the \code{return.multiclust} argument.
-#' 
+#'
 #' @inheritParams dna_multiclust
 #' @inheritParams dna_network
 #' @param method This argument represents the clustering method to be used for
@@ -7113,13 +7119,13 @@ dna_plotDendro <- function(clust,
 #' dna_init()
 #' samp <- dna_sample()
 #' conn <- dna_connection(samp)
-#' 
+#'
 #' # Single-linkage with k = 2 is chosen automatically based on modularity:
 #' dna_dendrogram(conn, method = "best", k = 0)
-#' 
+#'
 #' # Walktrap community detection with three clusters and rectangles:
 #' dna_dendrogram(conn, method = "walktrap", k = 3, rectangle.colors = "purple")
-#' 
+#'
 #' # Custom colors and shapes:
 #' dna_dendrogram(conn,
 #'                label.colors = "color",
@@ -7127,18 +7133,18 @@ dna_plotDendro <- function(clust,
 #'                rectangle.colors = c("steelblue", "orange"),
 #'                symbol.shapes = 17:18,
 #'                symbol.colors = 3:4)
-#' 
+#'
 #' # Circular dendrogram:
 #' dna_dendrogram(conn, circular = TRUE, label.truncate = 12)
 #'
 #' # Modifying the underlying network, e.g., leaving out concepts:
-#' dna_dendrogram(conn, excludeValues = list(concept = 
+#' dna_dendrogram(conn, excludeValues = list(concept =
 #'   "There should be legislation to regulate emissions."))
 #'
 #' # Return the dna_multiclust object
 #' mc <- dna_dendrogram(conn, k = 0, method = "best", return.multiclust = TRUE)
 #' mc
-#' 
+#'
 #' @import ggraph
 #' @importFrom ggplot2 .pt aes aes_string element_text expand_limits labs theme
 #'   theme_bw theme_classic theme_dark theme_grey theme_light theme_minimal
@@ -7188,7 +7194,7 @@ dna_dendrogram <- function(connection,
                            theme = "bw",
                            caption = TRUE,
                            return.multiclust = FALSE) {
-  
+
   cl <- dna_multiclust(connection,
                        statementType = statementType,
                        variable1 = variable1,
@@ -7242,7 +7248,7 @@ dna_dendrogram <- function(connection,
   mem <- cl$memberships[cl$memberships$i == 1 & cl$memberships$method == meth, 3:4]
   hierarchy <- stats::as.dendrogram(cl$cl[[1]])
   at <- dna_getAttributes(connection = connection, statementType = statementType, variable = variable1, values = mem$node)
-  
+
   # prepare labels
   if (is.null(labels) || is.na(labels)) {
     labels <- mem$node
@@ -7268,7 +7274,7 @@ dna_dendrogram <- function(connection,
   } else if (length(labels) == length(unique(mem$cluster))) {
     labels <- labels[mem$cluster]
   }
-  
+
   # truncate labels
   labels_short <- ifelse(nchar(labels) > label.truncate,
                          paste0(gsub("\\s+$",
@@ -7276,7 +7282,7 @@ dna_dendrogram <- function(connection,
                                      strtrim(labels, width = label.truncate)),
                                 "..."),
                          labels)
-  
+
   # prepare label colors
   if (is.null(label.colors) || is.na(label.colors)) {
     label.colors <- at$color
@@ -7302,7 +7308,7 @@ dna_dendrogram <- function(connection,
   } else if (length(label.colors) == nrow(mem)) {
     label.colors <- col2hex(label.colors)
   }
-  
+
   # prepare leaf colors
   if (is.null(leaf.colors) || is.na(leaf.colors)) {
     leaf.colors <- at$color
@@ -7328,7 +7334,7 @@ dna_dendrogram <- function(connection,
   } else if (length(leaf.colors) == nrow(mem)) {
     leaf.colors <- col2hex(leaf.colors)
   }
-  
+
   # prepare symbol colors
   if (is.null(symbol.colors) || is.na(symbol.colors)) {
     symbol.colors <- at$color
@@ -7354,7 +7360,7 @@ dna_dendrogram <- function(connection,
   } else if (length(symbol.colors) == nrow(mem)) {
     symbol.colors <- col2hex(symbol.colors)
   }
-  
+
   # prepare symbol sizes
   if (is.null(symbol.sizes) || is.na(symbol.sizes)) {
     symbol.sizes <- rep(5, length(symbol.colors))
@@ -7368,7 +7374,7 @@ dna_dendrogram <- function(connection,
   } else if (length(symbol.sizes) == nrow(mem)) {
     # keep them as they are
   }
-  
+
   # prepare symbol shapes
   if (is.null(symbol.shapes) || is.na(symbol.shapes)) {
     symbol.shapes <- rep(19, length(symbol.colors))
@@ -7413,7 +7419,7 @@ dna_dendrogram <- function(connection,
   } else if (length(symbol.shapes) == nrow(mem)) {
     # keep them as they are
   }
-  
+
   # prepare rectangle colors
   if (is.null(rectangle.colors) || is.na(rectangle.colors)) {
     rectangle.colors <- NULL
@@ -7429,7 +7435,7 @@ dna_dendrogram <- function(connection,
   } else if (length(rectangle.colors) == length(unique(mem$cluster))) {
     # keep colors as they are
   }
-  
+
   # add labels, colors etc. to the dendrogram
   hierarchy <- stats::dendrapply(hierarchy, function(node) {
     index <- which(mem$node == attributes(node)$label)
@@ -7450,12 +7456,12 @@ dna_dendrogram <- function(connection,
     attr(node, "edgePar") <- l
     node
   })
-  
+
   # prepare basic dendrogram plot
   dg <- ggraph(graph = hierarchy,
                layout = "dendrogram",
                circular = circular)
-  
+
   # add stems and leaves to the plot
   if (is.null(leaf.shape) || is.na(leaf.shape) || length(leaf.shape) != 1 || !is.character(leaf.shape)) {
     stop("'leaf.shape' can take the values 'elbow', 'link', 'diagonal', 'arc', or 'fan'.")
@@ -7482,7 +7488,7 @@ dna_dendrogram <- function(connection,
   } else {
     stop("'leaf.shape' can take the values 'elbow', 'link', 'diagonal', 'arc', or 'fan'.")
   }
-  
+
   # replace colors
   dg <- dg + scale_edge_linetype_discrete(guide = "none")
   leaf.colors <- as.factor(leaf.colors)
@@ -7494,7 +7500,7 @@ dna_dendrogram <- function(connection,
                                      values = autoCols,
                                      guide = guide,
                                      name = guidename)
-  
+
   # theme and label orientation
   if (theme == "bw") {
     dg <- dg + theme_bw()
@@ -7530,7 +7536,7 @@ dna_dendrogram <- function(connection,
             axis.ticks.x = element_blank(),
             axis.text.x = element_text(angle = 90, vjust = 0.5, hjust = 1))
   }
-  
+
   # labels
   if (isTRUE(circular)) {
     dg <- dg +
@@ -7548,12 +7554,12 @@ dna_dendrogram <- function(connection,
                          labels = labels_short[order.dendrogram(hierarchy)]) +
       theme(axis.text.x = element_text(colour = label.colors[order.dendrogram(hierarchy)]))
   }
-  
+
   # caption
   if (isTRUE(caption)) {
     dg <- dg + labs(caption = paste0("Method: ", meth, ". Modularity: ", round(mod, 3), " at k = ", length(unique(mem$cluster)), "."))
   }
-  
+
   # symbols (line ends)
   dg <- dg +
     geom_node_point(aes_string(filter = "leaf",
@@ -7564,7 +7570,7 @@ dna_dendrogram <- function(connection,
     scale_shape_identity() +
     scale_size_identity() +
     scale_color_identity()
-  
+
   # rectangles
   if (!circular && !is.null(rectangle.colors)) {
     h <- stats::as.hclust(hierarchy)$height
@@ -7588,7 +7594,7 @@ dna_dendrogram <- function(connection,
                            color = "color"),
                 fill = NA)
   }
-  
+
   return(dg)
 }
 
@@ -9885,7 +9891,7 @@ dna_plotFrequency <- function(connection,
 #'
 #' @importFrom grDevices col2rgb rgb
 #' @author Johannes B. Gruber, Philip Leifeld
-#' 
+#'
 #' @export
 col2hex <- function(x) {
   x <- tryCatch({
